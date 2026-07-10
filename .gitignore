@@ -1,0 +1,8 @@
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+experiments/*.jsonl
+experiments/router.json
+!experiments/results.sample.jsonl
+.ltr_api_key
