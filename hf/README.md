@@ -14,6 +14,10 @@ pretty_name: Learning to Route
 
 Companion artifacts for [Learning to Route](https://github.com/lee101/learning-to-route): a medium→hard coding benchmark (17 tasks with adversarial hidden tests), per-model outcome logs from cheap LLMs (deepseek-v4-flash, gpt-5.4-nano/mini, gemini-3.5-flash), and trained router anchor tables (static-embedding vectors + per-model pass/cost stats).
 
+Headline result: a verify and escalate cascade over the four cheap models solves 100% of benchmark tasks at 26% of the cost of the best single model (which solves 88.2%). Full numbers in `report.json`.
+
+![frontier](paper/figs/frontier.png)
+
 Routing = one static embed (~0.15ms CPU, 16MB model) + k-NN over these anchors. Serve from Python ([pybed](https://github.com/lee101/pybed)), Go ([gobed](https://github.com/lee101/gobed)), or Zig ([zbed](https://github.com/lee101/zbed)).
 
 - `tasks.jsonl` — benchmark tasks (prompt, entry_point, difficulty, hidden tests)
