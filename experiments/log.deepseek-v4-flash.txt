@@ -1,0 +1,16 @@
+             lru_ttl    deepseek-v4-flash pass=True cost=$0.00078 32.6s
+          dijkstra_k    deepseek-v4-flash pass=False cost=$0.00026 11.8s
+           json_path    deepseek-v4-flash pass=True cost=$0.00060 31.2s
+            diff_lcs    deepseek-v4-flash pass=False cost=$0.00037 14.9s
+              base62    deepseek-v4-flash pass=False cost=$0.00166 66.6s
+           expr_eval    deepseek-v4-flash pass=False cost=$0.00000 0.0s
+     consistent_hash    deepseek-v4-flash pass=True cost=$0.00035 15.0s
+      task_scheduler    deepseek-v4-flash pass=True cost=$0.00035 13.8s
+       trie_wildcard    deepseek-v4-flash pass=True cost=$0.00013 6.6s
+      semver_resolve    deepseek-v4-flash pass=True cost=$0.00048 20.0s
+          csv_parser    deepseek-v4-flash pass=False cost=$0.00000 0.0s
+          regex_lite    deepseek-v4-flash pass=True cost=$0.00122 41.2s
+         bank_kernel    deepseek-v4-flash pass=False cost=$0.00029 11.0s
+          dijkstra_k    deepseek-v4-flash pass=True cost=$0.00091 37.7s
+           expr_eval    deepseek-v4-flash pass=False cost=$0.00091 42.2s
+          csv_parser    deepseek-v4-flash pass=True cost=$0.00246 107.2s

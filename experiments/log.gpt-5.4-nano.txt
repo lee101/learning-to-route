@@ -1,0 +1,14 @@
+             lru_ttl         gpt-5.4-nano pass=True cost=$0.00065 5.7s
+          dijkstra_k         gpt-5.4-nano pass=False cost=$0.00029 3.2s
+           json_path         gpt-5.4-nano pass=True cost=$0.00040 5.0s
+            diff_lcs         gpt-5.4-nano pass=True cost=$0.00056 4.5s
+              base62         gpt-5.4-nano pass=True cost=$0.00054 5.1s
+           expr_eval         gpt-5.4-nano pass=True cost=$0.00174 12.5s
+     consistent_hash         gpt-5.4-nano pass=True cost=$0.00058 7.2s
+      task_scheduler         gpt-5.4-nano pass=True cost=$0.00073 7.2s
+       trie_wildcard         gpt-5.4-nano pass=True cost=$0.00033 3.4s
+      semver_resolve         gpt-5.4-nano pass=True cost=$0.00103 7.8s
+          csv_parser         gpt-5.4-nano pass=False cost=$0.00083 4.4s
+          regex_lite         gpt-5.4-nano pass=False cost=$0.00153 9.1s
+         bank_kernel         gpt-5.4-nano pass=False cost=$0.00052 5.2s
+          dijkstra_k         gpt-5.4-nano pass=True cost=$0.00027 2.9s

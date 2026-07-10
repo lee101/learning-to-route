@@ -1,0 +1,15 @@
+             lru_ttl     gemini-3.5-flash pass=False cost=$0.03615 19.0s
+          glob_match     gemini-3.5-flash pass=False cost=$0.03609 20.8s
+          dijkstra_k     gemini-3.5-flash pass=False cost=$0.01191 8.8s
+           json_path     gemini-3.5-flash pass=False cost=$0.03611 23.3s
+            diff_lcs     gemini-3.5-flash pass=False cost=$0.03616 18.5s
+              base62     gemini-3.5-flash pass=True cost=$0.02998 11.8s
+           expr_eval     gemini-3.5-flash pass=False cost=$0.03613 16.0s
+     consistent_hash     gemini-3.5-flash pass=True cost=$0.02976 14.6s
+      task_scheduler     gemini-3.5-flash pass=True cost=$0.02576 11.6s
+       trie_wildcard     gemini-3.5-flash pass=True cost=$0.01344 6.0s
+      semver_resolve     gemini-3.5-flash pass=True cost=$0.03053 12.1s
+          csv_parser     gemini-3.5-flash pass=False cost=$0.03615 17.3s
+          regex_lite     gemini-3.5-flash pass=False cost=$0.03613 27.1s
+         bank_kernel     gemini-3.5-flash pass=True cost=$0.03543 17.1s
+          dijkstra_k     gemini-3.5-flash pass=True cost=$0.01491 8.0s

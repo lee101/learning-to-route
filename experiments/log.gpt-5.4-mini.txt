@@ -1,0 +1,14 @@
+             lru_ttl         gpt-5.4-mini pass=True cost=$0.01010 27.4s
+          dijkstra_k         gpt-5.4-mini pass=False cost=$0.00716 22.0s
+           json_path         gpt-5.4-mini pass=True cost=$0.00521 14.7s
+            diff_lcs         gpt-5.4-mini pass=True cost=$0.04026 96.7s
+              base62         gpt-5.4-mini pass=True cost=$0.01902 46.7s
+           expr_eval         gpt-5.4-mini pass=True cost=$0.02923 80.6s
+     consistent_hash         gpt-5.4-mini pass=True cost=$0.00265 7.0s
+      task_scheduler         gpt-5.4-mini pass=True cost=$0.00573 15.5s
+       trie_wildcard         gpt-5.4-mini pass=True cost=$0.00357 8.4s
+      semver_resolve         gpt-5.4-mini pass=True cost=$0.01618 39.4s
+          csv_parser         gpt-5.4-mini pass=False cost=$0.02307 64.3s
+          regex_lite         gpt-5.4-mini pass=True cost=$0.01091 30.5s
+         bank_kernel         gpt-5.4-mini pass=False cost=$0.00689 17.4s
+          dijkstra_k         gpt-5.4-mini pass=True cost=$0.00784 20.9s

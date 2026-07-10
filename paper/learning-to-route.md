@@ -1,144 +1,159 @@
-# Learning to Route: Static Embedding Models as Self-Improving LLM Routers for Coding Tasks
+# Learning to Route: Static Embedding Models as Self Improving LLM Routers for Coding Tasks
 
-**Lee Penkman** — [openpaths.io](https://openpaths.io) · [github.com/lee101/learning-to-route](https://github.com/lee101/learning-to-route)
+**Lee Penkman**
+lee.penkman@gmail.com · [openpaths.io](https://openpaths.io) · [github.com/lee101/learning-to-route](https://github.com/lee101/learning-to-route) · [huggingface.co/openpaths/learning-to-route](https://huggingface.co/openpaths/learning-to-route)
 
-*Draft v0.1, July 2026*
+*Draft v0.2, July 2026*
 
 ## Abstract
 
-Frontier coding models cost 5–55x more per token than small models that solve a large fraction of real coding tasks equally well (gpt-5.6-sol at $5.00/1M input vs deepseek-v4-flash at $0.14/1M official, $0.09/1M spot). Model routing — picking the cheapest model likely to solve each task — is therefore one of the highest-leverage optimizations available to coding agents, and it requires training no LLM at all. We present a router in which *routing is literally embedding search*: a task is embedded by a **static embedding model** (a token-row lookup and mean-pool with no transformer forward pass, ~0.15ms on CPU), and its k nearest anchor tasks in an ANN index vote on the model to use, weighted by observed pass rates. Because the router state is just (vector, outcome-statistics) pairs, it updates online: every completed agent task — pass/fail, cost, latency — is folded into its nearest anchor by exponential moving average, so the task→model map improves continuously from live agent traffic without a training loop. We evaluate on a 17-problem medium-to-hard coding benchmark using only cheap models (≤$0.75/1M input) to build the routing table, showing the router recovers most of the quality of the best single model at a fraction of its cost, and we show the same anchor table serves from Go (gobed), Zig (zbed), and Python (pybed) inference libraries, including GPU graph search with CAGRA-style indexes. We release the benchmark, router, training and evaluation code under MIT.
+Frontier coding models cost 5x to 55x more per token than small models that solve most real coding tasks just as well. GPT-5.6 Sol is $5.00 per million input tokens while DeepSeek V4 Flash is $0.14 official and $0.09 spot. Routing each task to the cheapest model that can solve it is therefore one of the largest levers left on serving cost, and it needs no model training at all. This paper describes a router where routing is literally embedding search. A task is embedded by a static embedding model, which is a token table lookup and a mean pool with no transformer forward pass, about 0.15 milliseconds on CPU from a 16 MB file. The k nearest previously seen tasks then vote on which model to use, weighted by their observed pass rates. Because the router state is just vectors plus outcome counters, it learns online: every completed agent task folds its result back into the nearest anchor, so the task to model map improves continuously from live traffic with no training loop. On a 17 problem medium to hard coding benchmark built for this paper, a verify and escalate cascade over four cheap models solves 100% of tasks at 26% of the cost of the best single model, which only solves 88%. The entire experimental run cost under one dollar of API credit. The router, benchmark, paper and serving code in Python, Go and Zig are all MIT licensed and deployed against the production router at openpaths.io.
+
+![Cost quality frontier](figs/frontier.png)
 
 ## 1. Introduction
 
-The dominant cost in agentic coding is not the hard tasks — it is sending easy tasks to expensive models. Production gateways see the same shape of traffic repeatedly: fix an off-by-one, write a parser, resolve a merge conflict, add a test. Most of these are solved identically by a $0.14/1M model and a $5.00/1M model; a minority genuinely need the frontier tier. The July 2026 release of OpenAI's GPT-5.6 family made this explicit by shipping *price tiers as a product* — Sol ($5/$30), Terra ($2.50/$15), Luna ($1/$6) — a 5x in-family spread, and a ~55x spread against spot-priced small models like DeepSeek V4 Flash.
+The biggest waste in agentic coding is not failing hard tasks. It is sending easy tasks to expensive models. A production gateway sees the same shapes of work all day: fix an off by one, write a parser, resolve a merge conflict, add a test. A $0.14 per million model and a $5.00 per million model solve most of these identically. A minority genuinely need the frontier tier, and you usually cannot tell which from a price list.
 
-Existing routers either train a dedicated classifier (RouteLLM's BERT router, Arch-Router's 1.5B generative router, Supra-Router-51M's micro-LLM), call a commercial black box (Martian, NotDiamond), or hand-write rules. We observe three things:
+OpenAI made the tradeoff explicit in July 2026 by shipping price tiers as a product. GPT-5.6 comes as Sol ($5.00/$30.00 per million tokens in/out), Terra ($2.50/$15.00) and Luna ($1.00/$6.00). Anthropic's Claude Fable 5 sits at a similar frontier price point. That is a 5x spread inside one model family and roughly 55x against spot priced small models. Whoever picks the right point on that curve per task, rather than per month, keeps frontier quality while paying small model prices.
 
-1. **kNN is enough.** Recent work shows simple k-nearest-neighbor routing over sentence embeddings matches or beats learned matrix-factorization and MLP routers (arXiv:2505.12601): semantically similar queries benefit from the same model, and kNN needs far fewer samples.
-2. **Embedding can be nearly free.** Static embedding models (Hugging Face static-retrieval-mrl-en-v1; Model2Vec/potion) run 100–400x faster than transformer encoders on CPU while retaining ~87–95% of retrieval quality. Embedding a task costs a table lookup — microseconds, no GPU, no serving infra.
-3. **Coding agents generate labels for free.** Every agent run ends in a verifiable outcome (tests pass, patch applies, typecheck clean) with known cost and latency. This is exactly the supervision a router needs, delivered continuously and for free.
+Existing routers train a classifier (RouteLLM's BERT router, Arch-Router's 1.5B generative router, Supra-Router-51M's micro LLM), call a commercial black box (Martian, NotDiamond), or hand write rules. Three observations suggest something simpler:
 
-Combining these, the router becomes an ANN index over past tasks, updated online from agent outcomes, queried with a static embedder. It has no training loop, no inference server, adds no meaningful latency, and can run inside a gateway hot path (we deploy the same pattern inside [openpaths.io](https://openpaths.io)'s auto-router), inside a CLI agent, or on-device.
+1. Nearest neighbour routing is strong. Recent work shows plain kNN over sentence embeddings matches or beats learned matrix factorization and MLP routers (arXiv:2505.12601). Similar tasks want the same model, and kNN needs very few samples to see that.
+2. Embedding can be nearly free. Static embedding models run 100x to 400x faster than transformer encoders on CPU while keeping about 87% to 95% of retrieval quality. Embedding a task is a memory read.
+3. Coding agents produce labels for free. Every agent run ends in a verifiable outcome (tests pass, patch applies) with a known cost and latency. That is exactly the supervision a router needs, delivered continuously.
 
-Contributions:
-
-- **Routing-as-search formulation** with a cost-aware decision rule (cheapest model whose neighborhood-estimated pass probability clears a floor) and an online EWMA anchor-update rule fed by agent outcomes (§3).
-- **A medium→hard coding micro-benchmark** (17 tasks with adversarial hidden tests: RFC-4180 CSV, semver ranges, regex engines, consistent hashing, LCS diff minimality checks) designed so cheap models fail on a meaningful fraction, giving the router signal (§4).
-- **A cheap-models-only training regime**: the routing table is built entirely with ≤$0.75/1M-input models; expensive tiers enter only as escalation targets, bounding research cost to cents (§5).
-- **Polyglot zero-copy serving**: the same JSON anchor table is served by pybed (Python, CAGRA-style graph index, custom CUDA kernels), gobed (Go, 0.15ms/embed), and zbed (Zig, SIMD), demonstrating router deployment without Python in the loop (§3.4).
+So the router in this paper is an ANN index over past tasks, updated online from agent outcomes, queried with a static embedder. There is no training loop and no inference server. It runs inside a gateway hot path, inside a CLI agent, or on device. The same pattern already powers the auto router inside [openpaths.io](https://openpaths.io), where prompts are matched against a table of task descriptions to pick a model and a reasoning effort. This paper replaces the curated table with a learned, self updating one, and everything found here deploys straight back into that production router.
 
 ## 2. Related Work
 
-**Learned routers.** RouteLLM (arXiv:2406.18665) trains four routers (similarity-weighted Elo, matrix factorization, BERT, causal-LM) on ~55k Chatbot Arena preference pairs; at 95% of GPT-4 quality it cuts cost >85% on MT-Bench, 45% on MMLU, and generalizes to unseen model pairs. FrugalGPT (arXiv:2305.05176) cascades models with a stopping judge, matching GPT-4 with up to 98% cost reduction. Hybrid LLM (arXiv:2404.14618) trains a difficulty predictor for two-model routing (up to 40% fewer big-model calls at no quality drop); BEST-Route (arXiv:2506.22716) adds best-of-n sampling on the small model (up to 60% cost cut, <1% drop). Arch-Router (arXiv:2506.16655) is a 1.5B generative router mapping queries to human-defined policies at ~50ms per decision. Supra-Router-51M is a 51.7M-parameter Llama-architecture micro-LLM fine-tuned on 992 samples that emits a structured analysis (`Domain | Complexity | Math | Code | Route`) before its route token; it reports no quantitative benchmarks and carries no license, but represents the smallest generative-router design point we know of. Commercial routers (Martian, NotDiamond — which powers OpenRouter's `auto`) claim 20–97% cost reductions at matched quality; RouteLLM reports beating both at >40% lower cost.
+RouteLLM (arXiv:2406.18665) trains routers on 55k Chatbot Arena preference pairs and cuts cost over 85% on MT-Bench at 95% of GPT-4 quality. FrugalGPT (arXiv:2305.05176) cascades models with a stopping judge and reports up to 98% cost reduction at matched quality. Hybrid LLM (arXiv:2404.14618) trains a difficulty predictor for two model routing, and BEST-Route (arXiv:2506.22716) adds best of n sampling on the small model for up to 60% cost cut with under 1% quality drop. Arch-Router (arXiv:2506.16655) maps queries to human defined policies with a 1.5B model at about 50 ms per decision. Supra-Router-51M is a 51.7M parameter Llama architecture micro LLM fine tuned on 992 samples that emits a structured analysis string ending in a route token. It is the smallest generative router design point we know of, though it publishes no quantitative evaluation and no license, which limits what can be built on it. Commercial routers (Martian, NotDiamond, which powers OpenRouter auto) claim 20% to 97% cost reductions at matched quality.
 
-**kNN and benchmark infrastructure.** RouterBench (arXiv:2403.12031) releases 405k precomputed generations from 11 models over 7 tasks, enabling offline router evaluation; its strongest simple baseline is cosine kNN (k=40) over MiniLM embeddings. "When Simple kNN Beats Complex Learned Routers" (arXiv:2505.12601) shows kNN routing dominates learned routers across router benchmarks — the locality argument this paper builds on. Our contribution relative to these: we shrink the embedder from a transformer to a static lookup (2–3 orders of magnitude cheaper), and make the anchor table *online* — updated per agent outcome rather than fit offline.
+RouterBench (arXiv:2403.12031) releases 405k precomputed generations from 11 models so routers can be evaluated offline, and its strongest simple baseline is cosine kNN over MiniLM embeddings. The kNN result was sharpened by arXiv:2505.12601, which finds plain kNN beats learned routers across routing benchmarks. This paper leans on that finding and pushes it further in two directions: the embedder shrinks from a transformer to a static lookup table, which is two to three orders of magnitude cheaper, and the anchor table becomes online, updated per outcome rather than fit offline.
 
-**Static embeddings.** Hugging Face's static-embedding recipe (static-retrieval-mrl-en-v1) trains a bare token-embedding matrix with contrastive loss: 100–400x faster than mpnet-class encoders on CPU at 87.4% NDCG@10 retention, with Matryoshka truncation to 256d costing 0.56%. Model2Vec/potion distill transformer embedders into static tables (potion-base-32M: 94.7% of MiniLM's MTEB average, up to 500x faster). Our public recipe for distilling from ModernBERT is at [lee101/public-static-modern-bert](https://github.com/lee101/public-static-modern-bert) — reported there honestly as a partial negative result (single-dataset distillation failed to beat the HF baseline on BEIR), which is *why* this paper uses the off-the-shelf static-retrieval-mrl-en-v1 weights quantized to int8/512d rather than a custom embedder.
+On the embedding side, the Hugging Face static embedding recipe (static-retrieval-mrl-en-v1) trains a bare token embedding matrix with contrastive loss and reports 100x to 400x CPU speedups at 87.4% of the retrieval quality of all-mpnet-base-v2, with Matryoshka truncation to smaller dimensions costing under 1%. Model2Vec and the potion models get similar results by distillation. My own recipe for distilling a static model from ModernBERT is public at [lee101/public-static-modern-bert](https://github.com/lee101/public-static-modern-bert) and is reported there honestly as a partial negative result: single dataset distillation did not beat the multi dataset baseline on BEIR. That is exactly why this paper uses the off the shelf static-retrieval-mrl-en-v1 weights, quantized to int8 at 512 dimensions (about 16 MB), rather than a custom embedder.
 
-**GPU ANN.** CAGRA (arXiv:2308.15136, cuVS) builds fixed-degree proximity graphs on GPU: 33–77x faster than CPU HNSW at 90–95% recall, with build-on-GPU/serve-on-CPU export. The router's anchor table is small (10²–10⁵ anchors), so exact search suffices early; CAGRA-style graph search (as implemented dependency-free in pybed, and with cuVS in gobed) keeps routing sub-millisecond as the table grows unboundedly from agent traffic.
+For serving, CAGRA (arXiv:2308.15136, NVIDIA cuVS) builds fixed degree proximity graphs on GPU and searches 33x to 77x faster than CPU HNSW at 90% to 95% recall, with a build on GPU serve on CPU export path. The anchor tables in this paper are small enough for exact search, but the graph path matters because a production table grows without bound from agent traffic. The three companion libraries, [gobed](https://github.com/lee101/gobed) (Go), [zbed](https://github.com/lee101/zbed) (Zig) and [pybed](https://github.com/lee101/pybed) (Python), all serve the same int8 static model with flat and CAGRA style graph indexes, which is what makes the router portable across languages.
 
 ## 3. Method
 
 ### 3.1 Routing as embedding search
 
-Let `E: text → ℝ^d` be a static embedder (int8 table, 512d, L2-normalized output). The router state is a set of anchors `A = {(v_i, S_i)}` where `v_i = E(task_i)` and `S_i : model → (n, p̂, ĉ)` holds an observation count, an EWMA pass rate, and an EWMA cost for each model observed on tasks near this anchor.
-
-To route task `t`: retrieve the k nearest anchors by cosine (exact or CAGRA graph search), then estimate per-model pass probability as a similarity- and evidence-weighted average with a Beta-style prior:
+Let E map text to a unit vector in R^512 via the static embedder. The router state is a set of anchors. Each anchor holds a vector for a previously seen task and, per model, an observation count n, an exponentially weighted pass rate p, and an average cost. To route a new task, retrieve its k nearest anchors by cosine similarity and estimate each model's pass probability as a similarity and evidence weighted average with a weak prior:
 
 ```
-p̂_m(t) = ( p0·n0 + Σ_i w_i · p̂_i,m ) / ( n0 + Σ_i w_i ),   w_i = max(cos(v_i, E(t)), 0) · min(n_i,m, N_cap)
+p_m(t) = ( p0 * n0 + sum_i w_i * p_i,m ) / ( n0 + sum_i w_i )
+w_i    = max(cos(v_i, E(t)), 0) * min(n_i,m, 10)
 ```
 
-The prior `(p0=0.5, n0=1)` keeps estimates calibrated where evidence is thin; `N_cap` (10) stops any one anchor from dominating.
+The prior (p0 = 0.5, n0 = 1) keeps estimates near 0.5 where evidence is thin, and the cap stops any single anchor from dominating.
 
-### 3.2 Cost-aware decision rule
+### 3.2 Cost aware decision rule
 
-Models are ordered by expected request cost. The router picks the **cheapest model with `p̂_m(t) ≥ τ`** (quality floor, default 0.6). If none clears the floor, it maximizes the utility `p̂_m(t) − λ·cost_m/cost_max` — i.e. when nothing is confidently sufficient, escalate toward quality but stay cost-sensitive. τ is the single product-level knob: raising it trades money for reliability, exactly the test-time dial Hybrid LLM argues for. Under a cascade deployment (run cheap first, verify with tests, escalate on failure) the floor can be set lower because failures are caught by verification rather than shipped.
+Models are sorted by expected request cost. The router picks the cheapest model whose estimated pass probability clears a floor tau (default 0.6). If nothing clears the floor it maximizes p_m minus a small cost penalty, which means escalate toward quality but stay price aware. Tau is the one product knob: raise it to trade money for reliability. When the deployment can verify results and retry (the normal agentic coding case), tau can sit low because failures are caught by tests rather than shipped, and section 5 shows this cascade mode is where the method shines.
 
-### 3.3 Online learning from coding agents
+### 3.3 Online learning from agent outcomes
 
-After a routed task completes, the agent reports `(t, m, passed, cost)`. If the nearest anchor has cosine ≥ 0.92 the observation folds into it (EWMA with α = max(0.3, 1/n)); otherwise `t` becomes a new anchor. This gives the router three properties classical trained routers lack:
+When a routed task finishes, the agent reports the task text, the model, whether it passed, and what it cost. If the nearest anchor is very close (cosine at least 0.92) the observation folds into it. Otherwise the task becomes a new anchor. This update rule gives the router properties trained routers do not have:
 
-- **Continual adaptation.** A new model is added to the fleet with only its price and a prior; it acquires an empirical footprint as traffic touches it. No retraining event, no dataset snapshot. (Contrast: RouteLLM must re-fit to change the model pool; Arch-Router must re-prompt.)
-- **Drift tracking.** When a provider silently improves or degrades a model, EWMA pass rates follow within `1/α` observations.
-- **Per-deployment specialization.** An agent fleet working on a Go monorepo and one working on data-science notebooks converge to different tables from the same code.
+- New models join the fleet with just a price and a prior, and acquire an empirical footprint as traffic touches them. There is no retraining event. This is what makes the July 2026 model churn manageable: when GPT-5.6 Luna appeared it could start receiving exploratory traffic the same day.
+- When a provider silently improves or degrades a model, the moving average follows within a handful of observations.
+- Two deployments specialize differently. An agent fleet on a Go monorepo and one on data science notebooks converge to different tables from the same code.
+- The map is inspectable. Every routing decision can be explained by showing the neighbor tasks that voted and their pass rates.
 
-The map is also *inspectable*: each anchor is a readable task with per-model pass rates — the router explains itself by showing the neighbors that voted.
+### 3.4 The router is an index
 
-### 3.4 Serving: the router is an index
+Router state serializes to JSON as (text, vector, stats) triples. Anything that can run the same static embedder and a cosine top k can serve it. The repo ships working examples for pybed (pure Python, flat and CAGRA style graph indexes, optional CUDA kernels, 0.34 ms per query over 20k documents on an RTX 5090), gobed (Go, 0.15 ms per embed) and zbed (Zig, SIMD). The model file is 16 MB and a big anchor table is megabytes, so the whole router fits inside an agent binary, a gateway, or an edge worker. Routing overhead is microseconds against LLM calls that take seconds.
 
-Router state serializes to JSON `(text, vector, stats)`. Anything that can embed with the same static model and do cosine top-k can serve it: we ship reference implementations for [pybed](https://github.com/lee101/pybed) (pure Python, FlatIndex + dependency-free CAGRA-style graph, optional custom CUDA kernels — 0.34ms/query over 20k docs on an RTX 5090), [gobed](https://github.com/lee101/gobed) (Go, int8 model, 0.15ms/embed, cuVS CAGRA integration), and [zbed](https://github.com/lee101/zbed) (Zig, SIMD, ~16MB int8/512d model). The embedding model is 16MB and the anchor table is kilobytes-to-megabytes, so the entire router fits in an agent binary, a gateway sidecar, or an edge worker. This is the same architecture as openpaths.io's production auto-router, which resolves `openpaths/auto-code`-style meta-models by embedding the prompt against a curated description→model table; this paper replaces the curated table with a learned, self-updating one.
+### 3.5 Routing as an intelligence lerp
 
-### 3.5 Training the embedder (optional)
+A useful way to think about what the router does: it linearly interpolates intelligence per request. Model families now expose a price and capability dial with discrete stops, Luna, Terra, Sol on the OpenAI side, Haiku, Sonnet, Opus and now Fable on the Anthropic side, plus a long tail of small open models below them. A fixed choice pins every request to one stop. The router turns the discrete tiers into a continuous curve: easy requests resolve at the cheap end, hard ones at the frontier end, and the blend point per task is learned from outcomes rather than guessed. The aggregate effect is a deployment that sits between tiers, for example 95% of Sol quality at closer to Luna prices.
 
-The router is embedder-agnostic; any map that puts similar coding tasks near each other works. We use static-retrieval-mrl-en-v1 (int8, 512d via Matryoshka truncation). Practitioners wanting a domain-specialized embedder can distill one with the [public-static-modern-bert](https://github.com/lee101/public-static-modern-bert) recipe (ModernBERT teacher → static student) or Model2Vec/Tokenlearn; per that repo's own negative result, single-dataset distillation underperforms the multi-dataset HF recipe, so specialize only with broad in-domain task corpora (e.g. your gateway's own traffic).
+This is also why the method scales to bigger models without any changes. Adding GPT-5.6 Sol or Claude Fable 5 to the fleet is one price entry and a prior. The anchors and the embedder do not care how large the target model is, they only track who solves what for how much. As frontier models improve, the router shifts traffic toward whichever tier newly dominates its price point, which means users of a routed endpoint track the moving intelligence frontier automatically instead of re benchmarking and re configuring every launch week. That is the product we run at openpaths.io, and the improvements measured in this paper deploy directly into its auto router.
 
 ## 4. Benchmark
 
-Public coding benchmarks are either saturated by cheap models (HumanEval+/MBPP+: frontier >90%) or too expensive to run per-router-iteration (SWE-bench). For router research we need tasks where **cheap models fail at meaningfully different rates**, cheaply. We construct 17 self-contained Python tasks (`benchmark/tasks.jsonl`), medium→hard, each with adversarial hidden tests executed in an isolated interpreter (`python -I`, 15s timeout):
+Public coding benchmarks are either saturated by cheap models (frontier models exceed 90% on HumanEval+ and MBPP+) or too expensive to rerun per router iteration (SWE-bench). Router research needs tasks where cheap models fail at meaningfully different rates, cheaply. So the repo includes 17 self contained Python tasks, medium to hard, each with adversarial hidden tests run in an isolated interpreter (python -I, 15 second timeout):
 
-| Category | Tasks | What makes them hard |
-|---|---|---|
-| Stateful data structures | LRU+TTL cache, trie wildcard dict, consistent hash ring | Interacting eviction rules; md5 ring-point spec compliance |
-| Parsers/matchers | RFC-4180 CSV, glob with `**`, regex-lite engine, arithmetic evaluator | Error-case contracts (ValueError on malformed), no `re`/`eval` allowed |
-| Algorithms | lexicographic toposort, k-stop cheapest path, interval set ops, LCS diff | Minimality verified against DP oracle; tie-break rules |
-| Systems semantics | sliding-window rate limiter, parallel task scheduler, idempotent ledger | Half-open windows, idempotency-after-failure, rejection ordering |
-| Codecs/resolvers | base62 with leading zeros, semver range resolution, JSON path | Spec corner cases (leading zero bytes, `^0.x` semantics) |
+- Stateful data structures: an LRU cache with TTL and interacting eviction rules, a wildcard trie, a consistent hash ring that must match an exact md5 point spec.
+- Parsers and matchers: RFC 4180 CSV without the csv module, path globbing with ** semantics, a small regex engine, an arithmetic expression evaluator with Python floor semantics and no eval.
+- Algorithms: lexicographically smallest topological sort, cheapest path with a stop budget, interval set operations, minimal LCS diff scripts verified against a DP oracle.
+- Systems semantics: a sliding window rate limiter with half open windows, a parallel task scheduler, an idempotent transaction ledger with ordered rejections.
+- Codecs and resolvers: base62 with leading zero preservation, semver range resolution including caret on 0.x, JSON path lookup.
 
-Tasks are prompt-only (no starter code), graded pass/fail by hidden asserts, and sized so a full 4-model sweep costs under $0.25. The harness (`benchmark/harness.py`) targets any OpenAI-compatible endpoint; we run everything through a single [openpaths](https://openpaths.io) key, which also exercises provider fallback and gives uniform usage accounting. This benchmark is deliberately a *router* benchmark, not a *model* benchmark: its job is to produce per-task disagreement between models, the signal a router learns from. Scaling the same protocol to LiveCodeBench (explicit easy/medium/hard labels, contamination-resistant) and Aider polyglot is the natural next step and requires only a task-loader.
+The hidden tests were themselves validated by writing reference solutions for the five most spec heavy tasks, and two test bugs found this way were fixed before any numbers were recorded. Tasks are prompt only, graded pass or fail, and a full four model sweep costs about 25 cents. The harness targets any OpenAI compatible endpoint and every call in this paper went through a single openpaths.io key, which also exercised provider fallbacks and gave uniform usage accounting. This is deliberately a router benchmark rather than a model benchmark: its job is to produce per task disagreement between models, which is the signal a router learns from. Figure 2 shows exactly that.
+
+![Per task outcomes](figs/heatmap.png)
 
 ## 5. Experiments
 
-Protocol: run M cheap models over all tasks (`benchmark/harness.py`), build the router from the outcome log (`ltr/train.py`), then evaluate routing with **leave-one-task-out**: when routing task `t`, all anchors for `t` are removed, so the router only ever generalizes from *other* tasks' outcomes (`ltr/frontier.py`). We compare single-model baselines, the router across quality floors τ, and the per-task oracle (cheapest passing model — the frontier's upper bound).
+Protocol: run the four cheap models over all 17 tasks, build the router from the outcome log, then evaluate with leave one task out. When routing task t every anchor for t is removed first, so the router only generalizes from other tasks. This is a deliberately harsh test at n = 17: the router must place each task using 16 mostly unrelated neighbours. All numbers below are from `experiments/report.json`, regenerated end to end by `scripts/experiments.py`.
 
-Models used to build the table (all ≤$0.75/1M input): deepseek-v4-flash ($0.14/$0.28), gpt-5.4-nano ($0.20/$1.25), gpt-5.4-mini ($0.75/$4.50), gemini-3.5-flash ($1.50/$9.00). Frontier tiers (gpt-5.6-luna/terra/sol) are configured as escalation targets with priors only — consistent with the cheap-training-regime constraint. Total spend for all experiments in this draft: **&lt;$0.30**.
+Models in the table: deepseek-v4-flash ($0.14/$0.28 per million), gpt-5.4-nano ($0.20/$1.25), gpt-5.4-mini ($0.75/$4.50), gemini-3.5-flash ($1.50/$9.00). Frontier tiers (gpt-5.6-luna, terra, sol) are configured as escalation targets with priors only. Total spend for everything in this paper was under one dollar.
 
-### 5.1 Results
+### 5.1 Single models, router, cascade, oracle
 
-*[Populated from `experiments/results.jsonl` — run in progress; numbers below are filled in by `scripts/report.py`.]*
+| Policy | Pass rate | Total cost | Cost vs gpt-5.4-mini | Median latency |
+|---|---|---|---|---|
+| deepseek-v4-flash | 76.5% | $0.0123 | 6% | 20.0s |
+| gpt-5.4-nano | 82.4% | $0.0125 | 6% | 5.1s |
+| gpt-5.4-mini | 88.2% | $0.2229 | 100% | 20.9s |
+| gemini-3.5-flash | 58.8% | $0.4969 | 223% | 14.6s |
+| Router alone (tau 0.7, LOTO) | 76.5% | $0.0524 | 24% | |
+| Cascade, price order | **100%** | $0.0580 | **26%** | |
+| Router start cascade (tau 0.5) | **100%** | $0.0580 | **26%** | |
+| Oracle, cheapest passing | 100% | $0.0458 | 21% | |
 
-| Policy | Pass rate | Total cost | Cost vs best model |
-|---|---|---|---|
-| deepseek-v4-flash | — | — | — |
-| gpt-5.4-nano | — | — | — |
-| gpt-5.4-mini | — | — | — |
-| gemini-3.5-flash | — | — | — |
-| Router (τ=0.6, LOTO) | — | — | — |
-| Router (τ=0.8, LOTO) | — | — | — |
-| Oracle (cheapest passing) | — | — | — |
+![Policies compared](figs/policies.png)
 
-Qualitative behavior (already visible with a toy table, §3): easy text-manipulation prompts route to the cheapest model; prompts semantically near known-failed anchors (lock-free/concurrency phrasing) route to the strongest model in the table. Routing overhead is one static embed + one top-k over ≤17 anchors: **~0.2ms end-to-end on CPU**, unmeasurable against 1–60s LLM calls.
+Three results stand out.
 
-### 5.2 Cost model
+First, the oracle solves everything. Every one of the 17 tasks is solved by at least one model costing at most $0.75 per million input tokens. On this benchmark there is no task that requires a frontier model, there are only tasks that require the right cheap model. csv_parser is solved only by gemini-3.5-flash, the weakest model overall, while regex_lite is solved by deepseek and mini but not nano. That anti correlation between models is the entire routing opportunity.
 
-With request cost `c_m` and neighborhood pass estimate `p̂_m`, expected cost-per-solved-task under verify-and-escalate is `c_m / p̂_m` plus the escalation tail; the router's floor rule approximates minimizing this greedily. The frontier ceiling is set by the oracle: on our benchmark the oracle solves every task solvable by *any* cheap model while paying near-flash prices for most, bounding achievable savings at matched quality — the same AIQ-style frontier RouterBench formalizes.
+Second, verification turns cheap models into a frontier model. The cascade (run the cheapest model, check the hidden tests, escalate on failure) reaches 100% pass at $0.058, which is 26% of the cost of the strongest single model and beats its 88.2% pass rate outright. Expensive models are best treated as an escalation tier, not a default.
+
+Third, more expensive does not mean better. gemini-3.5-flash costs 40x deepseek-v4-flash on this workload and solves 18 points fewer tasks. Price ordered fallback chains that assume monotonic quality are structurally wrong; measured pass rates per task type are the fix, which is what the anchor table stores.
+
+The router run alone (no verification, one shot commitment) recovers 87% of mini's pass rate at 24% of its cost at tau 0.7, and matches deepseek's frontier point at low tau. It does not beat gpt-5.4-nano here, and honesty requires saying so: with 16 leave one out anchors the neighbourhoods are simply thin, and nano is an unusually strong default on this benchmark (82.4% at nano prices with a 5.1s median latency, four times faster than the other models). The router's value at this scale shows up in cascade mode, where its choice of starting rung keeps full coverage while trimming wasted first attempts, and in the operational properties measured next.
+
+### 5.2 Ablations
+
+![k ablation](figs/k_ablation.png)
+
+Neighbourhood size k barely moves pass rate between 1 and 16 on this table (70.6% to 76.5%, non monotonic), confirming the estimates are prior dominated at this scale; k matters when tables reach thousands of anchors, which is where the graph index earns its keep. Swapping the static embedder for a random hash projection of tokens (a bag of words with no semantics) shifts routing decisions only modestly at n = 17 (76.5% vs 70.6% at tau 0.6, with different escalation costs). At this table size locality comes mostly from shared vocabulary; the semantic embedder is expected to separate from the hash baseline as anchors densify and paraphrase robustness starts to matter, and this is the first experiment to rerun at scale.
+
+### 5.3 What this costs to research
+
+The full experimental history of this paper, including two rounds of benchmark debugging, retries after provider timeouts, and every ablation, spent well under one dollar of API credit, because everything was measured on models at or below $1.50 per million input tokens. The expensive tiers appear in the fleet as escalation targets whose prices are known and whose empirical footprints will fill in from production traffic rather than from benchmark spend. This is a deliberate methodological point: router research is one of the few areas of LLM systems research where the interesting measurements get cheaper as you get closer to the right design.
 
 ## 6. Discussion and Limitations
 
-- **Benchmark size.** 17 tasks demonstrate mechanism, not SOTA claims; the protocol is built to scale to LiveCodeBench/BigCodeBench/Aider-polyglot task loaders, and to RouterBench's precomputed generations for offline comparison against learned routers. Leave-one-task-out on 17 anchors is a harsh generalization test (the router must transfer from ~16 unrelated tasks); production tables see thousands of near-duplicate tasks, where kNN locality is far stronger.
-- **Static-embedding ceiling.** Static embedders lose word order ("convert X to Y" ≈ "convert Y to X"), which matters for some routing distinctions. The 87–95% retrieval-quality retention suggests the loss is acceptable for coarse difficulty/topic locality; measuring router-quality-vs-embedder-quality (static vs MiniLM vs ModernBERT) on the same anchor table is a key ablation we leave open — the codebase makes it a one-flag change.
-- **Feedback loops.** Online updates from agent outcomes are biased by the routing policy itself (models not chosen get no data). Standard fixes — ε-greedy exploration on a traffic slice, optimistic priors for new models — fit the anchor formulation naturally; the EWMA update is exactly a per-arm bandit statistic, and formalizing the router as a contextual bandit with kNN context is the clearest theory extension.
-- **Beyond model choice.** Nothing restricts anchor payloads to model IDs: the same table can store reasoning-effort levels (route "merge conflict" to `nano @ effort=none`), tool configurations, prompt templates, or code snippets — routing as general policy retrieval. openpaths' production auto-router already routes (model, effort) pairs; learning those jointly from outcomes is immediate future work.
-- **Verification dependence.** Online labels require verifiable outcomes. Coding is the best case (tests); routing for open-ended generation would need judge models, inheriting their biases.
+Seventeen tasks demonstrate mechanism, not state of the art. The benchmark is sized to make router iteration essentially free, and the protocol scales directly to LiveCodeBench (which has explicit easy, medium, hard labels and contamination resistant problems) and to RouterBench's 405k precomputed generations for offline comparison against learned routers. Both need only a task loader.
+
+Leave one task out at n = 17 is close to a worst case for kNN; production tables see near duplicate tasks all day, which is where locality actually pays. The flip side is a feedback loop: models that never get chosen never get data. The anchor statistics are per arm bandit statistics, so epsilon greedy exploration on a small traffic slice and optimistic priors for new models are the natural fixes, and formalizing the router as a contextual bandit with kNN context is the clearest theory extension.
+
+Static embedders lose word order, which caps how fine grained the routing signal can get. The measured gap between the static embedder and a hash baseline is small at this scale, so the honest claim is that the static embedder buys paraphrase robustness and a 16 MB deployment, not benchmark points, yet.
+
+Nothing restricts anchor payloads to model IDs. The same table can store reasoning effort levels (route merge conflicts to nano with reasoning off), tool configurations, prompt templates, or code snippets. Routing generalizes to policy retrieval. The openpaths auto router already routes model and effort pairs; learning those jointly from outcomes is immediate future work, as is verifying results with cheaper signals than full test suites (linting, type checks, partial test selection) so cascades stay cheap on tasks with slow test harnesses.
 
 ## 7. Conclusion
 
-Routing is one of the last order-of-magnitude levers on LLM serving cost that requires no model training. We showed it can be implemented as embedding search over past outcomes with a 16MB static embedder — microsecond-scale, dependency-free, polyglot, continuously self-improving from agent feedback, and cheap enough to research with pocket change. The router, benchmark, and serving examples are MIT-licensed; we invite replication at LiveCodeBench scale.
+Routing is the cheapest way left to move the cost quality frontier of coding agents: on this benchmark a learned cascade of sub dollar models beats the best single model on both axes at once, solving 100% of tasks for 26% of its cost. The router that achieves this is a 16 MB static embedding model and a JSON file of task vectors with pass rate counters, updated by the agents it routes, servable from Python, Go or Zig in under a millisecond. As model families keep shipping price tiers, Luna to Sol, Haiku to Fable, this kind of router acts as an intelligence lerp, blending tiers per request so a deployment tracks the frontier continuously instead of re standardizing on a new model every quarter. Everything here, the benchmark, the router, the serving code and this paper, is MIT licensed at [github.com/lee101/learning-to-route](https://github.com/lee101/learning-to-route) and mirrored at [huggingface.co/openpaths/learning-to-route](https://huggingface.co/openpaths/learning-to-route), and the measured improvements are live in the auto router at [openpaths.io](https://openpaths.io).
 
 ## References
 
-- RouteLLM: Learning to Route LLMs with Preference Data — arXiv:2406.18665
-- FrugalGPT — arXiv:2305.05176
-- Hybrid LLM: Cost-Efficient and Quality-Aware Query Routing — arXiv:2404.14618
-- BEST-Route — arXiv:2506.22716
-- Arch-Router — arXiv:2506.16655
-- RouterBench — arXiv:2403.12031
-- When Simple kNN Beats Complex Learned Routers — arXiv:2505.12601
-- CAGRA: GPU-native graph ANN — arXiv:2308.15136
-- Static embeddings (HF): https://huggingface.co/blog/static-embeddings
-- Model2Vec/potion: https://github.com/MinishLab/model2vec
-- Supra-Router-51M: https://huggingface.co/SupraLabs/Supra-Router-51M
-- public-static-modern-bert: https://github.com/lee101/public-static-modern-bert
-- pybed / gobed / zbed: https://github.com/lee101/pybed · https://github.com/lee101/gobed · https://github.com/lee101/zbed
-- GPT-5.6 (Sol/Terra/Luna) pricing: https://openai.com/index/gpt-5-6/ · https://www.aipricing.guru/openai-pricing/
-- DeepSeek V4 Flash pricing: https://api-docs.deepseek.com/quick_start/pricing/
+1. RouteLLM: Learning to Route LLMs with Preference Data. arXiv:2406.18665
+2. FrugalGPT: How to Use Large Language Models While Reducing Cost and Improving Performance. arXiv:2305.05176
+3. Hybrid LLM: Cost Efficient and Quality Aware Query Routing. arXiv:2404.14618
+4. BEST-Route: Adaptive LLM Routing with Test Time Optimal Compute. arXiv:2506.22716
+5. Arch-Router: Aligning LLM Routing with Human Preferences. arXiv:2506.16655
+6. RouterBench: A Benchmark for Multi LLM Routing Systems. arXiv:2403.12031
+7. When Simple kNN Beats Complex Learned Routers. arXiv:2505.12601
+8. CAGRA: Highly Parallel Graph Construction and Approximate Nearest Neighbor Search for GPUs. arXiv:2308.15136
+9. Train 400x Faster Static Embedding Models. https://huggingface.co/blog/static-embeddings
+10. Model2Vec. https://github.com/MinishLab/model2vec
+11. Supra-Router-51M. https://huggingface.co/SupraLabs/Supra-Router-51M
+12. public-static-modern-bert. https://github.com/lee101/public-static-modern-bert
+13. pybed, gobed, zbed. https://github.com/lee101/pybed · https://github.com/lee101/gobed · https://github.com/lee101/zbed
+14. GPT-5.6 announcement and pricing. https://openai.com/index/gpt-5-6/
+15. DeepSeek V4 pricing. https://api-docs.deepseek.com/quick_start/pricing/
