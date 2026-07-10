@@ -14,3 +14,13 @@
           dijkstra_k    deepseek-v4-flash pass=True cost=$0.00091 37.7s
            expr_eval    deepseek-v4-flash pass=False cost=$0.00091 42.2s
           csv_parser    deepseek-v4-flash pass=True cost=$0.00246 107.2s
+           lisp_eval    deepseek-v4-flash pass=False score=0.000 cost=$0.00274 111.7s
+           cron_next    deepseek-v4-flash pass=False score=0.000 cost=$0.00157 62.6s
+            sql_mini    deepseek-v4-flash pass=False score=0.000 cost=$0.00141 53.6s
+    json_schema_lite    deepseek-v4-flash pass=True score=1.000 cost=$0.00061 22.7s
+      shell_tokenize    deepseek-v4-flash pass=True score=1.000 cost=$0.00175 69.5s
+       tsp_heuristic    deepseek-v4-flash pass=True score=1.000 cost=$0.00109 40.1s
+         bin_packing    deepseek-v4-flash pass=True score=1.000 cost=$0.00012 6.2s
+      knapsack_large    deepseek-v4-flash pass=True score=1.000 cost=$0.00135 53.7s
+   schedule_makespan    deepseek-v4-flash pass=True score=0.998 cost=$0.00056 23.5s
+  compress_roundtrip    deepseek-v4-flash pass=True score=0.427 cost=$0.00173 76.3s

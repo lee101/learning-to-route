@@ -157,15 +157,17 @@ def main():
     fig, ax = plt.subplots(figsize=(8.4, 5.2))
     ax.set_xscale("log")
     label_off = {
-        "deepseek-v4-flash": (0, 16), "gpt-5.4-nano": (0, -22),
-        "gpt-5.4-mini": (0, 14), "gemini-3.5-flash": (0, 14), "gpt-5.5": (0, 14),
+        "deepseek-v4-flash": (-10, -22, "left"), "gpt-5.4-nano": (12, 10, "left"),
+        "gpt-5.4-mini": (0, 14, "center"), "gemini-3.5-flash": (0, 14, "center"),
+        "gpt-5.5": (0, 14, "center"),
     }
     for m in MODELS:
         s = rep["single"][m]
         ax.scatter(s["cost"], s["pass"], s=150, color=C[m], zorder=4,
                    edgecolors="white", linewidths=1.5)
+        dx, dy, ha = label_off[m]
         ax.annotate(m, (s["cost"], s["pass"]), textcoords="offset points",
-                    xytext=label_off[m], ha="center", fontsize=9.5, fontweight="bold",
+                    xytext=(dx, dy), ha=ha, fontsize=9.5, fontweight="bold",
                     color=C[m])
     rc = sorted((v["cost"], v["pass"], f) for f, v in rep["router"].items())
     ax.plot([x for x, _, _ in rc], [y for _, y, _ in rc], "-", color=C["router"],
@@ -181,7 +183,7 @@ def main():
     ax.scatter(cc["cost"], cc["pass"], marker="D", s=140, color=C["cascade"], zorder=5,
                edgecolors="white", linewidths=1.5)
     ax.annotate("cascade\n(verify + escalate)", (cc["cost"], cc["pass"]),
-                textcoords="offset points", xytext=(0, -34), ha="center",
+                textcoords="offset points", xytext=(26, -30), ha="left",
                 fontsize=9.5, fontweight="bold", color=C["cascade"])
     rcx = rep["cascade"]["router_start_0.5"]
     ax.scatter(rcx["cost"], rcx["pass"], marker="D", s=140, color=C["router"], zorder=5,
@@ -192,7 +194,8 @@ def main():
     ax.set_title(f"Cost vs quality: {n} coding tasks, cheap models + one frontier tier",
                  pad=14)
     ax.xaxis.set_major_formatter(mticker.FormatStrFormatter("$%g"))
-    ax.legend(fontsize=9, loc="lower right", frameon=False)
+    ax.set_xlim(left=min(rep["single"][m]["cost"] for m in MODELS) * 0.45)
+    ax.legend(fontsize=9, loc="lower left", bbox_to_anchor=(0.03, 0.18), frameon=False)
     ax.grid(alpha=0.2, which="both")
     fig.tight_layout()
     fig.savefig(FIGS / "frontier.png", bbox_inches="tight")

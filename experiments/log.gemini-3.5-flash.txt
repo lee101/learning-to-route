@@ -13,3 +13,13 @@
           regex_lite     gemini-3.5-flash pass=False cost=$0.03613 27.1s
          bank_kernel     gemini-3.5-flash pass=True cost=$0.03543 17.1s
           dijkstra_k     gemini-3.5-flash pass=True cost=$0.01491 8.0s
+           lisp_eval     gemini-3.5-flash pass=False score=0.000 cost=$0.03621 22.2s
+           cron_next     gemini-3.5-flash pass=False score=0.000 cost=$0.03622 18.8s
+            sql_mini     gemini-3.5-flash pass=False score=0.000 cost=$0.03621 19.7s
+    json_schema_lite     gemini-3.5-flash pass=False score=0.000 cost=$0.03618 17.0s
+      shell_tokenize     gemini-3.5-flash pass=False score=0.000 cost=$0.03617 16.0s
+       tsp_heuristic     gemini-3.5-flash pass=False score=0.000 cost=$0.03614 17.5s
+         bin_packing     gemini-3.5-flash pass=True score=1.000 cost=$0.03604 19.9s
+      knapsack_large     gemini-3.5-flash pass=True score=1.000 cost=$0.03388 15.7s
+   schedule_makespan     gemini-3.5-flash pass=False score=0.000 cost=$0.03611 19.5s
+  compress_roundtrip     gemini-3.5-flash pass=False score=0.000 cost=$0.03622 21.8s

@@ -4,7 +4,7 @@
 
 Frontier models cost 5x to 55x more than small models that solve most coding tasks just as well (gpt-5.6-sol $5.00/1M input vs deepseek-v4-flash $0.09/1M spot). A router that sends each task to the cheapest model likely to solve it moves the cost/speed/quality frontier without training a single LLM.
 
-This repo is the open research codebase for the whitepaper [**Learning to Route**](paper/learning-to-route.md). Headline result on the included 17-task medium-hard coding benchmark: a verify-and-escalate cascade over four cheap models (deepseek-v4-flash, gpt-5.4-nano, gpt-5.4-mini, gemini-3.5-flash) solves **100% of tasks at 26% of the cost** of the best single model, which only solves 88.2%. Total research spend: under $1.
+This repo is the open research codebase for the whitepaper [**Learning to Route**](paper/learning-to-route.md). Headline result on the included 27-task coding benchmark (medium-hard exact tasks plus quality-scored optimization tasks): a verify-and-escalate cascade over four cheap models solves **100% of tasks at 26% of the cost of the best single model and 4% of the cost of a frontier model (gpt-5.5)**, which ties a $0.03 model at 77.8% pass. Per solved task: cascade $0.0041 vs frontier $0.1213, a 30x gap. Total research spend: about $4.
 
 ![frontier](paper/figs/frontier.png)
 

@@ -12,3 +12,13 @@
           regex_lite         gpt-5.4-mini pass=True cost=$0.01091 30.5s
          bank_kernel         gpt-5.4-mini pass=False cost=$0.00689 17.4s
           dijkstra_k         gpt-5.4-mini pass=True cost=$0.00784 20.9s
+           lisp_eval         gpt-5.4-mini pass=True score=1.000 cost=$0.03494 84.1s
+           cron_next         gpt-5.4-mini pass=True score=1.000 cost=$0.03286 76.3s
+            sql_mini         gpt-5.4-mini pass=False score=0.000 cost=$0.02385 56.9s
+    json_schema_lite         gpt-5.4-mini pass=True score=1.000 cost=$0.01270 29.0s
+      shell_tokenize         gpt-5.4-mini pass=True score=1.000 cost=$0.04955 119.7s
+       tsp_heuristic         gpt-5.4-mini pass=True score=1.000 cost=$0.00466 9.8s
+         bin_packing         gpt-5.4-mini pass=True score=1.000 cost=$0.00203 6.6s
+      knapsack_large         gpt-5.4-mini pass=True score=1.000 cost=$0.00357 8.4s
+   schedule_makespan         gpt-5.4-mini pass=True score=0.998 cost=$0.00597 14.9s
+  compress_roundtrip         gpt-5.4-mini pass=False score=0.000 cost=$0.03321 72.3s

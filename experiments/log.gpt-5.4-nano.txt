@@ -12,3 +12,13 @@
           regex_lite         gpt-5.4-nano pass=False cost=$0.00153 9.1s
          bank_kernel         gpt-5.4-nano pass=False cost=$0.00052 5.2s
           dijkstra_k         gpt-5.4-nano pass=True cost=$0.00027 2.9s
+           lisp_eval         gpt-5.4-nano pass=True score=1.000 cost=$0.00183 14.9s
+           cron_next         gpt-5.4-nano pass=False score=0.000 cost=$0.00180 10.8s
+            sql_mini         gpt-5.4-nano pass=True score=1.000 cost=$0.00330 18.6s
+    json_schema_lite         gpt-5.4-nano pass=True score=1.000 cost=$0.00096 6.4s
+      shell_tokenize         gpt-5.4-nano pass=True score=1.000 cost=$0.00091 5.9s
+       tsp_heuristic         gpt-5.4-nano pass=True score=1.000 cost=$0.00131 6.7s
+         bin_packing         gpt-5.4-nano pass=True score=1.000 cost=$0.00036 3.7s
+      knapsack_large         gpt-5.4-nano pass=False score=0.000 cost=$0.00101 7.7s
+   schedule_makespan         gpt-5.4-nano pass=True score=0.998 cost=$0.00184 11.1s
+  compress_roundtrip         gpt-5.4-nano pass=False score=0.000 cost=$0.00428 30.2s
