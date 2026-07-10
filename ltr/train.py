@@ -24,7 +24,7 @@ def train(results_path: str, out_path: str, models: list[ModelSpec] | None = Non
         models = [by_id.get(m, ModelSpec(m, 1.0, 4.0)) for m in seen]
     router = Router(models, embedder=Embedder(backend))
     for r in rows:
-        router.update(r["task"], r["model"], r["passed"], r.get("cost", 0.0))
+        router.update(r["task"], r["model"], r.get("score", float(r["passed"])), r.get("cost", 0.0))
     router.save(out_path)
     return router
 

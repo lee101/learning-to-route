@@ -27,11 +27,11 @@ class Anchor:
     vec: np.ndarray
     stats: dict = field(default_factory=dict)
 
-    def update(self, model_id: str, passed: bool, cost: float, alpha: float = 0.3):
+    def update(self, model_id: str, outcome: float, cost: float, alpha: float = 0.3):
         s = self.stats.setdefault(model_id, {"n": 0, "pass": 0.5, "cost": cost})
         s["n"] += 1
         a = max(alpha, 1.0 / s["n"])
-        s["pass"] = (1 - a) * s["pass"] + a * (1.0 if passed else 0.0)
+        s["pass"] = (1 - a) * s["pass"] + a * float(outcome)
         s["cost"] = (1 - a) * s["cost"] + a * cost
 
 
@@ -91,15 +91,15 @@ class Router:
         )
         return {"model": best.id, "expected_pass": ep[best.id], "policy": "utility", "all": ep}
 
-    def update(self, text: str, model_id: str, passed: bool, cost: float,
+    def update(self, text: str, model_id: str, outcome: float, cost: float,
                new_anchor_sim: float = 0.92):
         nbrs = self.neighbors(text, k=1)
         if nbrs and nbrs[0][1] >= new_anchor_sim:
-            nbrs[0][0].update(model_id, passed, cost)
+            nbrs[0][0].update(model_id, outcome, cost)
             return nbrs[0][0]
         vec = self.embedder.encode([text])[0]
         anchor = Anchor(text=text, vec=vec)
-        anchor.update(model_id, passed, cost)
+        anchor.update(model_id, outcome, cost)
         self.anchors.append(anchor)
         self._rebuild()
         return anchor

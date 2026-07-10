@@ -18,6 +18,7 @@ PRICES = {
     "gpt-5.6-terra": (2.50, 15.00),
     "gpt-5.6-sol": (5.00, 30.00),
     "gemini-3.5-flash": (1.50, 9.00),
+    "gpt-5.5": (5.00, 30.00),
     "claude-haiku": (1.00, 5.00),
 }
 
@@ -32,7 +33,7 @@ def extract_code(text: str) -> str:
     return blocks[-1] if blocks else text
 
 
-def run_tests(code: str, tests: str, timeout: float = 15.0) -> tuple[bool, str]:
+def run_tests(code: str, tests: str, timeout: float = 30.0) -> tuple[float, str]:
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
         f.write(code + "\n\n" + tests + "\nprint('LTR_PASS')\n")
         path = f.name
@@ -42,10 +43,13 @@ def run_tests(code: str, tests: str, timeout: float = 15.0) -> tuple[bool, str]:
             capture_output=True, text=True, timeout=timeout,
             env={"PATH": os.environ.get("PATH", ""), "HOME": tempfile.gettempdir()},
         )
+        m = re.search(r"LTR_SCORE: ([0-9.]+)", proc.stdout)
+        if m:
+            return min(max(float(m.group(1)), 0.0), 1.0), (proc.stderr or "")[-500:]
         ok = proc.returncode == 0 and "LTR_PASS" in proc.stdout
-        return ok, (proc.stderr or proc.stdout)[-500:]
+        return (1.0 if ok else 0.0), (proc.stderr or proc.stdout)[-500:]
     except subprocess.TimeoutExpired:
-        return False, "timeout"
+        return 0.0, "timeout"
     finally:
         os.unlink(path)
 
@@ -114,23 +118,27 @@ def main():
                     resp = call_model(client, base_url, api_key, model,
                                       task["prompt"], effort=args.effort)
                     code = extract_code(resp["text"])
-                    passed, detail = run_tests(code, task["tests"])
+                    score, detail = run_tests(code, task["tests"])
                 except Exception as e:
                     resp = {"cost": 0.0, "latency": 0.0, "usage": {}}
-                    code, passed, detail = "", False, f"api_error: {e}"[:300]
+                    code, score, detail = "", 0.0, f"api_error: {e}"[:300]
+                threshold = task.get("pass_threshold", 1.0)
+                passed = score >= threshold
                 row = {
                     "task_id": task["id"],
                     "task": task["prompt"],
                     "difficulty": task["difficulty"],
+                    "kind": task.get("kind", "exact"),
                     "model": model,
                     "passed": passed,
+                    "score": score,
                     "cost": resp["cost"],
                     "latency": resp["latency"],
                     "detail": detail if not passed else "",
                 }
                 out.write(json.dumps(row) + "\n")
                 out.flush()
-                print(f"{task['id']:>20} {model:>20} pass={passed} "
+                print(f"{task['id']:>20} {model:>20} pass={passed} score={score:.3f} "
                       f"cost=${resp['cost']:.5f} {resp['latency']:.1f}s")
 
 
